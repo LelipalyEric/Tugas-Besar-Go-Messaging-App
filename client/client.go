@@ -5,36 +5,83 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
-    conn, err := net.Dial("tcp", ":9090")
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "Cannot connect to server!")
-    } else {
-        fmt.Println("Connected to server!")
-    }
-    
-    connReader := bufio.NewReader(conn)
-    localReader := bufio.NewReader(os.Stdin)
-    fmt.Print("Type your message> ")
-    message, err := localReader.ReadString('\n')
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "Cannot read the message!")
-    } else {
-        fmt.Println("The message has been read!")
-    }
 
-    conn.Write([]byte(message)) // fmt.Fprint(conn, message)
-    fmt.Println("The message has been sent!")
-    fmt.Println("Waiting for reply...")
-    echo, err := connReader.ReadString('\n')
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "Failed to read the echo!")
-        os.Exit(1)
-    } else {
-        fmt.Println("The echo has been received!")
-    }
+	// Ngehubungin si client ke seerver
+	conn, err := net.Dial("tcp", ":9090")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Cannot connect to server!")
+	} else {
+		fmt.Println("Connected to server!")
+	}
+	defer conn.Close()
+	connReader := bufio.NewReader(conn)
+	localReader := bufio.NewReader(os.Stdin)
 
-    fmt.Println(echo)
+	//Input username
+	username := ""
+	for {
+		fmt.Print("Type your username> ")
+		username, err = localReader.ReadString('\n')
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Cannot read the username!")
+			continue
+		}
+
+		conn.Write([]byte(username)) // fmt.Fprint(conn, message)
+		status, err := connReader.ReadString('\n')
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Server disconnected during registration.")
+			return
+		}
+
+		status = strings.TrimSpace(status)
+
+		if status == "APPROVED" {
+			fmt.Println("Username Approved :D")
+			break
+		} else {
+			fmt.Println("ERROR DUPLICATE USERNAME, TRY AGAIN")
+		}
+	}
+
+	fmt.Println("Start typing your messages")
+
+	go handleIncomingMessage(conn)
+
+	for {
+		//Input messages
+		message, err := localReader.ReadString('\n')
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Cannot read the message!")
+			continue
+		}
+
+		if message == "/exit" {
+			fmt.Fprint(conn, "/exit\n")
+			break
+		}
+
+		conn.Write([]byte(message)) // fmt.Fprint(conn, message)
+
+	}
+}
+
+func handleIncomingMessage(conn net.Conn) {
+	connReader := bufio.NewReader(conn)
+
+	for {
+		incoming, err := connReader.ReadString('\n')
+		if err != nil {
+			os.Exit(0)
+		} else {
+			fmt.Print(incoming)
+		}
+	}
+
 }
