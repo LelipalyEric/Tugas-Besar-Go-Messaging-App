@@ -103,21 +103,21 @@ func handleClient(conn net.Conn) {
 	for {
 		messageInput, err = reader.ReadString('\n')
 		if err != nil {
-			message := fmt.Sprintf("%s has left the groupchat unexpectedly\n", username)
+			message = fmt.Sprintf("%s has left the groupchat unexpectedly\n", username)
 			broadcast(message, conn)
 			break
 		} else {
 			fmt.Println("The message has been received!")
 		}
 
-		if strings.TrimSpace(message) == "/exit" {
+		if strings.TrimSpace(messageInput) == "/exit" {
 			fmt.Printf("%s left groupchat", username)
-			message := fmt.Sprintf("%s has left the groupchat\n", username)
+			message = fmt.Sprintf("%s has left the groupchat\n", username)
 			broadcast(message, conn)
 			break
 		}
 
-		message := fmt.Sprintf("%s: %s", username, messageInput)
+		message = fmt.Sprintf("%s: %s", username, messageInput)
 		broadcast(message, conn)
 	}
 
