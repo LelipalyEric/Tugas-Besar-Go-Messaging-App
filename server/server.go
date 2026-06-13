@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	clients = make(map[net.Conn]string)
-	mtx     sync.Mutex
+	clients     = make(map[net.Conn]string)
+	usernameMap = make(map[string]bool)
+	mtx         sync.Mutex
 )
 
 func main() {
@@ -57,24 +58,25 @@ func handleClient(conn net.Conn) {
 			fmt.Fprintf(os.Stderr, "Failed to read username!")
 		} else {
 			username = strings.TrimSpace(usernameInput)
+			lowerName := strings.ToLower(username)
 
 			mtx.Lock()
-			isDupe := false
-			for _, names := range clients {
-				if strings.EqualFold(names, username) {
-					isDupe = true
-					break
-				}
-			}
+
+			isDupe := usernameMap[lowerName]
 
 			if isDupe {
 				mtx.Unlock()
 				fmt.Fprint(conn, "REJECTED\n")
 			} else {
+				// keep username not lowerName
 				clients[conn] = username
+				usernameMap[lowerName] = true
 				mtx.Unlock()
+
 				fmt.Fprint(conn, "APPROVED\n")
 				fmt.Println("Username has been recieved!")
+
+				// shows username not lowercased
 				joinMsg := fmt.Sprintf("%s has joined\n", username)
 				broadcast(joinMsg, conn)
 				break
@@ -107,6 +109,7 @@ func handleClient(conn net.Conn) {
 
 	mtx.Lock()
 	delete(clients, conn)
+	delete(usernameMap, strings.ToLower(username))
 	mtx.Unlock()
 }
 
