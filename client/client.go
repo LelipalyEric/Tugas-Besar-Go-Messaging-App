@@ -9,6 +9,7 @@ import (
 )
 
 var (
+	// ini variable untuk menghandle bila client belum ada di dalam room jangan membuka buffered reader dari server untuk menerima message-message
 	isInRoom bool
 )
 
@@ -22,21 +23,23 @@ func main() {
 		fmt.Println("Connected to server!")
 	}
 	defer conn.Close()
+
 	connReader := bufio.NewReader(conn)
 	localReader := bufio.NewReader(os.Stdin)
 
-	//Input username
-	username := ""
+	//block for loop input username dimana minta dari reader standard input (terminal) minta username clientnya mau apa
 	for {
 		fmt.Print("Type your username> ")
-		username, err = localReader.ReadString('\n')
+		username, err := localReader.ReadString('\n')
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot read the username!")
 			continue
 		}
 
-		conn.Write([]byte(username)) // fmt.Fprint(conn, message)
+		//dia ngirim ke server hasil input dari standard input yang dimasukin ke variable username
+		conn.Write([]byte(username))
+
 		status, err := connReader.ReadString('\n')
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Server disconnected during registration.")
@@ -53,18 +56,19 @@ func main() {
 		}
 	}
 
-	//Input room
+	// block of information mau clientnya dan diberikan list of command yang bisa diterima oleh server
 	fmt.Println("What do you wanna do?")
 	fmt.Println("* /create to create room")
 	fmt.Println("* /join to join a room")
 	fmt.Println("* /list to list all available room")
 	fmt.Println("* /exit to close the program")
-	commandInput := ""
 
+	// ngeset variable untuk ngecek apakah client sudah didalam room di set jadi false karena masih di luar
 	isInRoom = false
 
+	// looping block untuk input command client
 	for {
-		commandInput, err = localReader.ReadString('\n')
+		commandInput, err := localReader.ReadString('\n')
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot read the command!")
@@ -77,6 +81,7 @@ func main() {
 			fmt.Fprint(conn, "/create\n")
 			fmt.Println("Choose room name")
 
+			// looping untuk pengecekan oleh server apakah input room name valid atau tidak
 			for {
 				commandInput, err = localReader.ReadString('\n')
 
@@ -85,7 +90,8 @@ func main() {
 					return
 				}
 
-				conn.Write([]byte(commandInput)) // fmt.Fprint(conn, message)
+				conn.Write([]byte(commandInput))
+
 				status, err := connReader.ReadString('\n')
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "disconnected during room creating session.")
@@ -106,54 +112,55 @@ func main() {
 			fmt.Fprint(conn, "/join\n")
 			fmt.Println("Choose room you wanna join")
 
-			for {
-				commandInput, err = localReader.ReadString('\n')
+			commandInput, err = localReader.ReadString('\n')
 
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Server disconnected during room joining session.")
-					return
-				}
-
-				conn.Write([]byte(commandInput)) // fmt.Fprint(conn, message)
-				status, err := connReader.ReadString('\n')
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "disconnected during room creating session.")
-					return
-				}
-
-				status = strings.TrimSpace(status)
-
-				if status == "APPROVED" {
-					fmt.Println("Successfully Joined The Room")
-					isInRoom = true
-					break
-				} else {
-					fmt.Println("ERROR INVALID ROOM NAME")
-				}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Server disconnected during room joining session.")
+				return
 			}
 
-			fmt.Println("Start typing your messages")
+			conn.Write([]byte(commandInput))
 
-			go handleIncomingMessage(conn)
+			status, err := connReader.ReadString('\n')
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "disconnected during room creating session.")
+				return
+			}
 
-			for {
-				//Input messages
-				message, err := localReader.ReadString('\n')
+			status = strings.TrimSpace(status)
 
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Cannot read the message!")
-					continue
+			if status == "APPROVED" {
+				// Kalau di approved dia akan masuk ke looping message untuk handle client sekarang ada di room
+				fmt.Println("Successfully Joined The Room")
+				// variable pengecekan apakah sudah masuk room menjadi true karena dia masuk ke room menandakan client ini sudah dalam posisi menerima message-message pengguna lain yang di handle di incoming message go routine
+				isInRoom = true
+
+				fmt.Println("Start typing your messages")
+
+				go handleIncomingMessage(conn)
+
+				for {
+					//Input messages
+					message, err := localReader.ReadString('\n')
+
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Cannot read the message!")
+						continue
+					}
+
+					if strings.TrimSpace(message) == "/exit" {
+						fmt.Println("Exiting Room")
+						fmt.Fprint(conn, "/exit\n")
+						// kalau exit varible ini jadi false kembali sampai di join
+						isInRoom = false
+						break
+					}
+
+					conn.Write([]byte(message))
 				}
 
-				if strings.TrimSpace(message) == "/exit" {
-					fmt.Println("Exiting Room")
-					fmt.Fprint(conn, "/exit\n")
-					isInRoom = false
-					break
-				}
-
-				conn.Write([]byte(message)) // fmt.Fprint(conn, message)
-
+			} else {
+				fmt.Println("ERROR INVALID ROOM NAME")
 			}
 
 		} else if commandInput == "/list" {
@@ -170,6 +177,7 @@ func main() {
 
 				listRoom = strings.TrimSpace(listRoom)
 
+				// looping nerima message ini hanya akan end kalau dari server diberikan special message END
 				if listRoom == "END" {
 					break
 				}
@@ -189,10 +197,14 @@ func main() {
 	}
 }
 
+// function yang bilang client sudah siap menerima message-message dari client lain dan bukan server acc/status
+// untuk mengetahui kapan client ini siap untuk menerima message-message dari client lain kita cek variable isInRoom
+// karena client hanya akan menerima message-message dari client lain kalau dia sudah masuk room
 func handleIncomingMessage(conn net.Conn) {
 	connReader := bufio.NewReader(conn)
 
 	for isInRoom {
+		// kalau is in roomnya jadi false/ client keluar dari room maka function ini selesai
 		if !isInRoom {
 			return
 		}
@@ -202,8 +214,11 @@ func handleIncomingMessage(conn net.Conn) {
 			os.Exit(0)
 			return
 		} else {
-			//SAKTI ANJIR
-			fmt.Print("\r\033[K")
+			// \r <-- cursor pindahin ke paling kiri
+			// \033 <-- escape character stop nge print ke layar untuk sementara
+			// [K <-- hapus semua isi line sampe end of line secara visual
+			fmt.Print("\r\033[K") // <-- ANSI escape codes untuk formatting message yang masuk
+			// nge print message yang didapat dari server
 			fmt.Print(incoming)
 		}
 	}
